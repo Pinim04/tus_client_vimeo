@@ -1,4 +1,5 @@
 import 'dart:convert' show base64, utf8;
+import 'dart:io';
 import 'dart:math' show min;
 import 'dart:typed_data' show Uint8List, BytesBuilder;
 import 'exceptions.dart';
@@ -7,6 +8,7 @@ import 'store.dart';
 import 'package:cross_file/cross_file.dart' show XFile;
 import 'package:http/http.dart' as http;
 import "package:path/path.dart" as p;
+import 'dart:convert' show jsonDecode;
 
 /// This class is used for creating or resuming uploads.
 class TusClient {
@@ -14,8 +16,8 @@ class TusClient {
   /// support this version, too.
   static final tusVersion = "1.0.0";
 
-  /// The tus server Uri
-  final Uri url;
+  /// The video creation url
+  final String url;
 
   /// Storage used to save and retrieve upload URLs by its fingerprint.
   final TusStore? store;
@@ -26,6 +28,9 @@ class TusClient {
 
   /// Any additional headers
   final Map<String, String>? headers;
+
+  /// Autentication token provided by Vimeo
+  final String auth;
 
   /// The maximum payload size in bytes when uploading the file in chunks (512KB)
   final int maxChunkSize;
@@ -46,7 +51,8 @@ class TusClient {
 
   TusClient(
     this.url,
-    this.file, {
+    this.file,
+    this.auth, {
     this.store,
     this.headers,
     this.metadata = const {},
@@ -76,27 +82,37 @@ class TusClient {
     _fileSize = await file.length();
 
     final client = getHttpClient();
+
+    final createURL = _parseCreateUrl(url);
     final createHeaders = Map<String, String>.from(headers ?? {})
       ..addAll({
-        "Tus-Resumable": tusVersion,
-        "Upload-Metadata": _uploadMetadata ?? "",
-        "Upload-Length": "$_fileSize",
+        HttpHeaders.authorizationHeader: auth,
+        HttpHeaders.contentTypeHeader:
+            ContentType('application', 'json').toString(),
+        HttpHeaders.acceptHeader: 'application/vnd.vimeo.*+json;version=3.4',
       });
+    final createBody = {
+      "upload": {"approach": "tus", "size": "$_fileSize"}
+    };
 
-    final response = await client.post(url, headers: createHeaders);
+    final response =
+        await client.post(createURL, headers: createHeaders, body: createBody);
     if (!(response.statusCode >= 200 && response.statusCode < 300) &&
         response.statusCode != 404) {
       throw ProtocolException(
-          "unexpected status code (${response.statusCode}) while creating upload");
+          "Unexpected status code (${response.statusCode}) while creating upload");
     }
 
-    String urlStr = response.headers["location"] ?? "";
-    if (urlStr.isEmpty) {
-      throw ProtocolException(
-          "missing upload Uri in response for creating upload");
+    dynamic resBody = jsonDecode(response.body);
+    if (resBody['upload']['approach'] != 'tus') {
+      throw ProtocolException("Upload not configured with tus protocol");
     }
 
-    _uploadUrl = _parseUrl(urlStr);
+    if (resBody['upload']['upload_link'] == "") {
+      throw ProtocolException("Missing upload url in response for creating upload");
+    }
+
+    _uploadUrl = Uri.parse(resBody['upload']['upload_link'].toString());
     store?.set(_fingerprint, _uploadUrl as Uri);
   }
 
@@ -136,12 +152,11 @@ class TusClient {
     final client = getHttpClient();
 
     while (!_pauseUpload && (_offset ?? 0) < totalBytes) {
-      final uploadHeaders = Map<String, String>.from(headers ?? {})
-        ..addAll({
-          "Tus-Resumable": tusVersion,
-          "Upload-Offset": "$_offset",
-          "Content-Type": "application/offset+octet-stream"
-        });
+      final uploadHeaders = <String, String>{
+        "Tus-Resumable": tusVersion,
+        "Upload-Offset": "$_offset",
+        "Content-Type": "application/offset+octet-stream"
+      };
       _chunkPatchFuture = client.patch(
         _uploadUrl as Uri,
         headers: uploadHeaders,
@@ -153,17 +168,17 @@ class TusClient {
       // check if correctly uploaded
       if (!(response.statusCode >= 200 && response.statusCode < 300)) {
         throw ProtocolException(
-            "unexpected status code (${response.statusCode}) while uploading chunk");
+            "Unexpected status code (${response.statusCode}) while uploading chunk");
       }
 
-      int? serverOffset = _parseOffset(response.headers["upload-offset"]);
+      int? serverOffset = _parseOffset(response.headers["Upload-Offset"]);
       if (serverOffset == null) {
         throw ProtocolException(
-            "response to PATCH request contains no or invalid Upload-Offset header");
+            "Response to PATCH request contains no or invalid Upload-Offset header");
       }
       if (_offset != serverOffset) {
         throw ProtocolException(
-            "response contains different Upload-Offset value ($serverOffset) than expected ($_offset)");
+            "Response contains different Upload-Offset value ($serverOffset) than expected ($_offset)");
       }
 
       // update progress
@@ -214,22 +229,22 @@ class TusClient {
   Future<int> _getOffset() async {
     final client = getHttpClient();
 
-    final offsetHeaders = Map<String, String>.from(headers ?? {})
-      ..addAll({
+    final offsetHeaders = <String, String>{
         "Tus-Resumable": tusVersion,
-      });
+        HttpHeaders.acceptHeader: 'application/vnd.vimeo.*+json;version=3.4',
+      };
     final response =
         await client.head(_uploadUrl as Uri, headers: offsetHeaders);
 
     if (!(response.statusCode >= 200 && response.statusCode < 300)) {
       throw ProtocolException(
-          "unexpected status code (${response.statusCode}) while resuming upload");
+          "Unexpected status code (${response.statusCode}) while resuming upload");
     }
 
-    int? serverOffset = _parseOffset(response.headers["upload-offset"]);
+    int? serverOffset = _parseOffset(response.headers["Upload-Offset"]);
     if (serverOffset == null) {
       throw ProtocolException(
-          "missing upload offset in response for resuming upload");
+          "Missing upload offset in response for resuming upload");
     }
     return serverOffset;
   }
@@ -262,17 +277,14 @@ class TusClient {
     return int.tryParse(offset);
   }
 
-  Uri _parseUrl(String urlStr) {
-    if (urlStr.contains(",")) {
-      urlStr = urlStr.substring(0, urlStr.indexOf(","));
+  Uri _parseCreateUrl(String urlStr) {
+    if (urlStr.contains("?")) {
+      urlStr = urlStr.substring(0, urlStr.indexOf("?"));
     }
-    Uri uploadUrl = Uri.parse(urlStr);
-    if (uploadUrl.host.isEmpty) {
-      uploadUrl = uploadUrl.replace(host: url.host, port: url.port);
-    }
-    if (uploadUrl.scheme.isEmpty) {
-      uploadUrl = uploadUrl.replace(scheme: url.scheme);
-    }
-    return uploadUrl;
+    Uri createUri = Uri.parse(urlStr);
+    createUri = createUri.replace(queryParameters: <String, dynamic>{
+      'fields': ['upload.status', 'upload.upload_link', 'upload.approach']
+    });
+    return createUri;
   }
 }

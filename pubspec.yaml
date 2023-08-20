@@ -1,20 +1,20 @@
 name: tus_client
-description: A tus client for dart allowing resumable uploads using the tus protocol.
+description: A tus client for dart allowing resumable uploads using the tus protocol for Vimeo APIs.
 version: 1.0.2
-homepage: https://github.com/jjmutumi/tus_client
+homepage: https://github.com/Pinim04/tus_client_vimeo
 
 environment:
-  sdk: ">=2.12.0 <3.0.0"
+  sdk: '>=3.0.5 <4.0.0'
 
 dependencies:
   flutter:
     sdk: flutter
   cross_file: ^0.3.1+4
-  http: ^0.13.0
+  http: ^0.13.6
   path: ^1.7.0
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
   mockito: ^5.0.3
-  build_runner: ^1.11.0
+  build_runner: ^2.4.6
