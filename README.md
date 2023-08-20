@@ -143,5 +143,7 @@ await client.upload(
 For an example of usage in a Flutter app (using file picker) see: [/example](https://github.com/jjmutumi/tus_client/tree/master/example/lib/main.dart)
 
 ## Maintainers
-
-* [Joseph N. Mutumi](https://github.com/jjmutumi)
+###Original repo
+[Joseph N. Mutumi](https://github.com/jjmutumi)
+###Vimeo adjustement
+[Matteo Pini](https://github.com/Pinim04)
