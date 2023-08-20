@@ -2,11 +2,9 @@
 
 [![Pub Version](https://img.shields.io/pub/v/tus_client)](https://pub.dev/packages/tus_client)
 [![Build Status](https://travis-ci.org/jjmutumi/tus_client.svg?branch=master)](https://travis-ci.org/jjmutumi/tus_client)
-[![codecov](https://codecov.io/gh/jjmutumi/tus_client/branch/master/graph/badge.svg)](https://codecov.io/gh/jjmutumi/tus_client)
-
 ---
 
-A tus client in pure dart. [Resumable uploads using tus protocol](https://tus.io/)
+A tus client in pure dart. [Resumable uploads using tus protocol](https://tus.io/)branch
 
 > **tus** is a protocol based on HTTP for *resumable file uploads*. Resumable
 > means that an upload can be interrupted at any moment and can be resumed without
