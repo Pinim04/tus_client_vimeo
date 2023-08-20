@@ -1,7 +1,5 @@
 # A tus client
----
-
-A tus client in pure dart. [Resumable uploads using tus protocol](https://tus.io/)branch
+A tus client in pure dart. [Resumable uploads using tus protocol](https://tus.io/)
 
 > **tus** is a protocol based on HTTP for *resumable file uploads*. Resumable
 > means that an upload can be interrupted at any moment and can be resumed without
