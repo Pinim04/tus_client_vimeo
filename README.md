@@ -1,7 +1,4 @@
 # A tus client
-
-[![Pub Version](https://img.shields.io/pub/v/tus_client)](https://pub.dev/packages/tus_client)
-[![Build Status](https://travis-ci.org/jjmutumi/tus_client.svg?branch=master)](https://travis-ci.org/jjmutumi/tus_client)
 ---
 
 A tus client in pure dart. [Resumable uploads using tus protocol](https://tus.io/)branch
@@ -145,5 +142,5 @@ For an example of usage in a Flutter app (using file picker) see: [/example](htt
 ## Maintainers
 ### Original repo
 [Joseph N. Mutumi](https://github.com/jjmutumi)
-### Vimeo adjustement
+### Vimeo adjustment
 [Matteo Pini](https://github.com/Pinim04)
