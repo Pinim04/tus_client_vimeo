@@ -1,4 +1,4 @@
-name: tus_client
+name: tus_client_vimeo
 description: A tus client for dart allowing resumable uploads using the tus protocol for Vimeo APIs.
 version: 1.0.2
 homepage: https://github.com/Pinim04/tus_client_vimeo

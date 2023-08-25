@@ -4,11 +4,12 @@ import 'dart:math' show min;
 import 'dart:typed_data' show Uint8List, BytesBuilder;
 import 'exceptions.dart';
 import 'store.dart';
+import 'dart:developer';
 
 import 'package:cross_file/cross_file.dart' show XFile;
 import 'package:http/http.dart' as http;
 import "package:path/path.dart" as p;
-import 'dart:convert' show jsonDecode;
+import 'dart:convert' show jsonDecode, jsonEncode;
 
 /// This class is used for creating or resuming uploads.
 class TusClient {
@@ -16,8 +17,13 @@ class TusClient {
   /// support this version, too.
   static final tusVersion = "1.0.0";
 
-  /// The video creation url
-  final String url;
+  static final vimeoHost = 'https://api.vimeo.com';
+
+  /// The viemo user id
+  final String userId;
+
+  /// The video folder in which create the video
+  final String? folderId;
 
   /// Storage used to save and retrieve upload URLs by its fingerprint.
   final TusStore? store;
@@ -50,11 +56,12 @@ class TusClient {
   Future? _chunkPatchFuture;
 
   TusClient(
-    this.url,
+    this.userId,
     this.file,
     this.auth, {
     this.store,
     this.headers,
+    this.folderId,
     this.metadata = const {},
     this.maxChunkSize = 512 * 1024,
   }) {
@@ -83,7 +90,10 @@ class TusClient {
 
     final client = getHttpClient();
 
-    final createURL = _parseCreateUrl(url);
+    final videoCreationURL = vimeoHost +
+        '/users/$userId/videos?fields=upload.status,upload.upload_link,upload.approach';
+    final createURL = _parseCreateUrl(videoCreationURL);
+
     final createHeaders = Map<String, String>.from(headers ?? {})
       ..addAll({
         HttpHeaders.authorizationHeader: auth,
@@ -91,12 +101,14 @@ class TusClient {
             ContentType('application', 'json').toString(),
         HttpHeaders.acceptHeader: 'application/vnd.vimeo.*+json;version=3.4',
       });
-    final createBody = {
-      "upload": {"approach": "tus", "size": "$_fileSize"}
+    final createBody = <String, dynamic>{
+      "upload": {"approach": "tus", "size": "$_fileSize"},
     };
+    createBody.addAll({"folder_uri": "/users/$userId/projects/$folderId"});
+    log("Info: ${jsonEncode(createBody)}");
 
-    final response =
-        await client.post(createURL, headers: createHeaders, body: createBody);
+    final response = await client.post(createURL,
+        headers: createHeaders, body: jsonEncode(createBody));
     if (!(response.statusCode >= 200 && response.statusCode < 300) &&
         response.statusCode != 404) {
       throw ProtocolException(
@@ -109,7 +121,8 @@ class TusClient {
     }
 
     if (resBody['upload']['upload_link'] == "") {
-      throw ProtocolException("Missing upload url in response for creating upload");
+      throw ProtocolException(
+          "Missing upload url in response for creating upload");
     }
 
     _uploadUrl = Uri.parse(resBody['upload']['upload_link'].toString());
@@ -171,14 +184,14 @@ class TusClient {
             "Unexpected status code (${response.statusCode}) while uploading chunk");
       }
 
-      int? serverOffset = _parseOffset(response.headers["Upload-Offset"]);
+      int? serverOffset = _parseOffset(response.headers["upload-offset"]);
       if (serverOffset == null) {
         throw ProtocolException(
-            "Response to PATCH request contains no or invalid Upload-Offset header");
+            "Response to PATCH request contains no or invalid upload-offset header");
       }
       if (_offset != serverOffset) {
         throw ProtocolException(
-            "Response contains different Upload-Offset value ($serverOffset) than expected ($_offset)");
+            "Response contains different upload-offset value ($serverOffset) than expected ($_offset)");
       }
 
       // update progress
@@ -230,9 +243,9 @@ class TusClient {
     final client = getHttpClient();
 
     final offsetHeaders = <String, String>{
-        "Tus-Resumable": tusVersion,
-        HttpHeaders.acceptHeader: 'application/vnd.vimeo.*+json;version=3.4',
-      };
+      "Tus-Resumable": tusVersion,
+      HttpHeaders.acceptHeader: 'application/vnd.vimeo.*+json;version=3.4',
+    };
     final response =
         await client.head(_uploadUrl as Uri, headers: offsetHeaders);
 
@@ -241,7 +254,7 @@ class TusClient {
           "Unexpected status code (${response.statusCode}) while resuming upload");
     }
 
-    int? serverOffset = _parseOffset(response.headers["Upload-Offset"]);
+    int? serverOffset = _parseOffset(response.headers["upload-offset"]);
     if (serverOffset == null) {
       throw ProtocolException(
           "Missing upload offset in response for resuming upload");
@@ -282,8 +295,9 @@ class TusClient {
       urlStr = urlStr.substring(0, urlStr.indexOf("?"));
     }
     Uri createUri = Uri.parse(urlStr);
+
     createUri = createUri.replace(queryParameters: <String, dynamic>{
-      'fields': ['upload.status', 'upload.upload_link', 'upload.approach']
+      'fields': 'upload.status,upload.upload_link,upload.approach'
     });
     return createUri;
   }
