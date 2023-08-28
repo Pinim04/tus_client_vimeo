@@ -174,15 +174,16 @@ class TusClient {
         "Upload-Offset": "$_offset",
         "Content-Type": "application/offset+octet-stream"
       };
-      _chunkPatchFuture = client.patch(
-        _uploadUrl as Uri,
-        headers: uploadHeaders,
-        body: await _getData(),
-      );
       try {
+        _chunkPatchFuture = client
+            .patch(
+              _uploadUrl as Uri,
+              headers: uploadHeaders,
+              body: await _getData(),
+            )
+            .timeout(const Duration(seconds: 20));
         final response = await _chunkPatchFuture;
         _chunkPatchFuture = null;
-
         // check if correctly uploaded
         if (!(response.statusCode >= 200 && response.statusCode < 300)) {
           throw ProtocolException(
@@ -210,20 +211,11 @@ class TusClient {
             onComplete();
           }
         }
+      } on ProtocolException catch (e) {
+        log("Error: ${e.message}");
       } catch (e) {
-        if (!await InternetConnectionChecker().hasConnection) {
-          pause();
-          dynamic connectionListener =
-              InternetConnectionChecker().onStatusChange.listen((event) {
-            if (event == InternetConnectionStatus.connected) {
-              log("Info: Connection ok");
-            }
-          });
-        }
-
-        if (onConnectionLost != null) {
-          onConnectionLost();
-        }
+        log('Error: $e');
+        pause();
       }
     }
   }
