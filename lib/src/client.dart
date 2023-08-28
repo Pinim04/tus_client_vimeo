@@ -2,14 +2,17 @@ import 'dart:convert' show base64, utf8;
 import 'dart:io';
 import 'dart:math' show min;
 import 'dart:typed_data' show Uint8List, BytesBuilder;
+import 'package:flutter/foundation.dart';
+
 import 'exceptions.dart';
 import 'store.dart';
 import 'dart:developer';
+import 'dart:convert' show jsonDecode, jsonEncode;
 
 import 'package:cross_file/cross_file.dart' show XFile;
 import 'package:http/http.dart' as http;
 import "package:path/path.dart" as p;
-import 'dart:convert' show jsonDecode, jsonEncode;
+import 'package:internet_connection_checker/internet_connection_checker.dart';
 
 /// This class is used for creating or resuming uploads.
 class TusClient {
@@ -151,6 +154,7 @@ class TusClient {
   upload({
     Function(double)? onProgress,
     Function()? onComplete,
+    Function()? onConnectionLost,
   }) async {
     if (!await resume()) {
       await create();
@@ -175,34 +179,50 @@ class TusClient {
         headers: uploadHeaders,
         body: await _getData(),
       );
-      final response = await _chunkPatchFuture;
-      _chunkPatchFuture = null;
+      try {
+        final response = await _chunkPatchFuture;
+        _chunkPatchFuture = null;
 
-      // check if correctly uploaded
-      if (!(response.statusCode >= 200 && response.statusCode < 300)) {
-        throw ProtocolException(
-            "Unexpected status code (${response.statusCode}) while uploading chunk");
-      }
+        // check if correctly uploaded
+        if (!(response.statusCode >= 200 && response.statusCode < 300)) {
+          throw ProtocolException(
+              "Unexpected status code (${response.statusCode}) while uploading chunk");
+        }
 
-      int? serverOffset = _parseOffset(response.headers["upload-offset"]);
-      if (serverOffset == null) {
-        throw ProtocolException(
-            "Response to PATCH request contains no or invalid upload-offset header");
-      }
-      if (_offset != serverOffset) {
-        throw ProtocolException(
-            "Response contains different upload-offset value ($serverOffset) than expected ($_offset)");
-      }
+        int? serverOffset = _parseOffset(response.headers["upload-offset"]);
+        if (serverOffset == null) {
+          throw ProtocolException(
+              "Response to PATCH request contains no or invalid upload-offset header");
+        }
+        if (_offset != serverOffset) {
+          throw ProtocolException(
+              "Response contains different upload-ffset value ($serverOffset) than expected ($_offset)");
+        }
 
-      // update progress
-      if (onProgress != null) {
-        onProgress((_offset ?? 0) / totalBytes * 100);
-      }
+        // update progress
+        if (onProgress != null) {
+          onProgress((_offset ?? 0) / totalBytes * 100);
+        }
 
-      if (_offset == totalBytes) {
-        this.onComplete();
-        if (onComplete != null) {
-          onComplete();
+        if (_offset == totalBytes) {
+          this.onComplete();
+          if (onComplete != null) {
+            onComplete();
+          }
+        }
+      } catch (e) {
+        if (!await InternetConnectionChecker().hasConnection) {
+          pause();
+          dynamic connectionListener =
+              InternetConnectionChecker().onStatusChange.listen((event) {
+            if (event == InternetConnectionStatus.connected) {
+              log("Info: Connection ok");
+            }
+          });
+        }
+
+        if (onConnectionLost != null) {
+          onConnectionLost();
         }
       }
     }
@@ -211,7 +231,7 @@ class TusClient {
   /// Pause the current upload
   pause() {
     _pauseUpload = true;
-    _chunkPatchFuture?.timeout(Duration.zero, onTimeout: () {});
+    _chunkPatchFuture?.timeout(Duration.zero);
   }
 
   /// Actions to be performed after a successful upload
