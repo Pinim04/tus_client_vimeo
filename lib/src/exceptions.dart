@@ -7,3 +7,11 @@ class ProtocolException implements Exception {
 
   String toString() => "ProtocolException: $message";
 }
+
+class ConnectivityException implements Exception {
+  final String message;
+
+  ConnectivityException(this.message);
+
+  String toString() => "ProtocolException: $message";
+}

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert' show base64, utf8;
 import 'dart:io';
 import 'dart:math' show min;
@@ -154,9 +155,9 @@ class TusClient {
   upload({
     Function(double)? onProgress,
     Function()? onComplete,
-    Function()? onConnectionLost,
   }) async {
     if (!await resume()) {
+      //TODO!: if upload already started remove video from vimeo before retrying
       await create();
     }
 
@@ -169,12 +170,15 @@ class TusClient {
     final client = getHttpClient();
 
     while (!_pauseUpload && (_offset ?? 0) < totalBytes) {
-      final uploadHeaders = <String, String>{
-        "Tus-Resumable": tusVersion,
-        "Upload-Offset": "$_offset",
-        "Content-Type": "application/offset+octet-stream"
-      };
-      try {
+      //Checks for internet connectivity first
+      if (await InternetConnectionChecker().hasConnection) {
+        //Updates request headers
+        final uploadHeaders = <String, String>{
+          "Tus-Resumable": tusVersion,
+          "Upload-Offset": "$_offset",
+          "Content-Type": "application/offset+octet-stream"
+        };
+        //Makes request
         _chunkPatchFuture = client
             .patch(
               _uploadUrl as Uri,
@@ -182,42 +186,51 @@ class TusClient {
               body: await _getData(),
             )
             .timeout(const Duration(seconds: 20));
-        final response = await _chunkPatchFuture;
-        _chunkPatchFuture = null;
-        // check if correctly uploaded
-        if (!(response.statusCode >= 200 && response.statusCode < 300)) {
-          throw ProtocolException(
-              "Unexpected status code (${response.statusCode}) while uploading chunk");
-        }
 
-        int? serverOffset = _parseOffset(response.headers["upload-offset"]);
-        if (serverOffset == null) {
-          throw ProtocolException(
-              "Response to PATCH request contains no or invalid upload-offset header");
-        }
-        if (_offset != serverOffset) {
-          throw ProtocolException(
-              "Response contains different upload-ffset value ($serverOffset) than expected ($_offset)");
-        }
+        try {
+          final response = await _chunkPatchFuture;
+          _chunkPatchFuture = null;
 
-        // update progress
-        if (onProgress != null) {
-          onProgress((_offset ?? 0) / totalBytes * 100);
-        }
-
-        if (_offset == totalBytes) {
-          this.onComplete();
-          if (onComplete != null) {
-            onComplete();
+          //Checks if correctly uploaded
+          if (!(response.statusCode >= 200 && response.statusCode < 300)) {
+            throw ProtocolException(
+                "Unexpected status code (${response.statusCode}) while uploading chunk");
           }
+
+          int? serverOffset = _parseOffset(response.headers["upload-offset"]);
+          if (serverOffset == null) {
+            throw ProtocolException(
+                "Response to PATCH request contains no or invalid upload-offset header");
+          }
+          if (_offset != serverOffset) {
+            throw ProtocolException(
+                "Response contains different upload-ffset value ($serverOffset) than expected ($_offset)");
+          }
+
+          //Updates progress
+          if (onProgress != null) {
+            onProgress((_offset ?? 0) / totalBytes * 100);
+          }
+
+          if (_offset == totalBytes) {
+            this.onComplete();
+            if (onComplete != null) {
+              onComplete();
+            }
+          }
+        } on TimeoutException catch (e) {
+          throw ConnectivityException('Upload request timed out');
         }
-      } on ProtocolException catch (e) {
-        log("Error: ${e.message}");
-      } catch (e) {
-        log('Error: $e');
-        pause();
+      } else {
+        //Internet down
+        throw ConnectivityException('Internet connection unavailable');
       }
     }
+  }
+
+  //Removes patially uploaded video on Vimeo
+  abort() {
+    //TODO: Implement
   }
 
   /// Pause the current upload
