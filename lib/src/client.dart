@@ -14,6 +14,7 @@ import 'package:cross_file/cross_file.dart' show XFile;
 import 'package:http/http.dart' as http;
 import "package:path/path.dart" as p;
 import 'package:internet_connection_checker/internet_connection_checker.dart';
+import 'package:uuid/uuid.dart';
 
 /// This class is used for creating or resuming uploads.
 class TusClient {
@@ -45,6 +46,8 @@ class TusClient {
   /// The maximum payload size in bytes when uploading the file in chunks (512KB)
   final int maxChunkSize;
 
+  late final Uuid _uuid;
+
   int? _fileSize;
 
   String _fingerprint = "";
@@ -69,6 +72,7 @@ class TusClient {
     this.metadata = const {},
     this.maxChunkSize = 512 * 1024,
   }) {
+    _uuid = Uuid();
     _fingerprint = generateFingerprint() ?? "";
     _uploadMetadata = generateMetadata();
   }
@@ -107,8 +111,10 @@ class TusClient {
       });
     final createBody = <String, dynamic>{
       "upload": {"approach": "tus", "size": "$_fileSize"},
+      "folder_uri": "/users/$userId/projects/$folderId",
+      "name": "${_uuid.v4()}",
+      "hide_from_vimeo": true,
     };
-    createBody.addAll({"folder_uri": "/users/$userId/projects/$folderId"});
     log("Info: ${jsonEncode(createBody)}");
 
     final response = await client.post(createURL,
