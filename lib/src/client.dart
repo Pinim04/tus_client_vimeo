@@ -191,7 +191,7 @@ class TusClient {
               headers: uploadHeaders,
               body: await _getData(),
             )
-            .timeout(const Duration(seconds: 20));
+            .timeout(const Duration(seconds: 40));
 
         try {
           final response = await _chunkPatchFuture;
