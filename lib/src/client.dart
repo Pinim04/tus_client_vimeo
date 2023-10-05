@@ -22,16 +22,14 @@ class TusClient {
   /// support this version, too.
   static final tusVersion = "1.0.0";
 
-  static final vimeoHost = 'https://api.vimeo.com';
-
-  /// The viemo user id
-  final String userId;
+  //host to upoload to
+  final host;
 
   /// The video folder in which create the video
   final String? folderId;
 
   /// Storage used to save and retrieve upload URLs by its fingerprint.
-  final TusStore? store;
+  // final TusStore? store;
 
   final XFile file;
 
@@ -48,13 +46,14 @@ class TusClient {
 
   late final Uuid _uuid;
 
+  final Uri uploadUrl;
+
   int? _fileSize;
 
   String _fingerprint = "";
 
   String? _uploadMetadata;
-
-  Uri? _uploadUrl;
+  // Uri? get uploadUrl => _uploadUrl;
 
   int? _offset;
 
@@ -63,25 +62,24 @@ class TusClient {
   Future? _chunkPatchFuture;
 
   TusClient(
-    this.userId,
+    this.host,
     this.file,
+    this.uploadUrl,
     this.auth, {
-    this.store,
     this.headers,
     this.folderId,
     this.metadata = const {},
     this.maxChunkSize = 512 * 1024,
   }) {
-    _uuid = Uuid();
     _fingerprint = generateFingerprint() ?? "";
     _uploadMetadata = generateMetadata();
   }
 
   /// Whether the client supports resuming
-  bool get resumingEnabled => store != null;
+  // bool get resumingEnabled => store != null;
 
   /// The URI on the server for the file
-  Uri? get uploadUrl => _uploadUrl;
+  // Uri? get uploadUrl => _uploadUrl;
 
   /// The fingerprint of the file being uploaded
   String get fingerprint => _fingerprint;
@@ -93,68 +91,68 @@ class TusClient {
   http.Client getHttpClient() => http.Client();
 
   /// Create a new [upload] throwing [ProtocolException] on server error
-  create() async {
-    _fileSize = await file.length();
+  // create() async {
+  //   _fileSize = await file.length();
 
-    final client = getHttpClient();
+  //   final client = getHttpClient();
 
-    final videoCreationURL = vimeoHost +
-        '/users/$userId/videos?fields=upload.status,upload.upload_link,upload.approach';
-    final createURL = _parseCreateUrl(videoCreationURL);
+  //   final videoCreationURL = host +
+  //       '/users/$userId/videos?fields=upload.status,upload.upload_link,upload.approach';
+  //   final createURL = _parseCreateUrl(videoCreationURL);
 
-    final createHeaders = Map<String, String>.from(headers ?? {})
-      ..addAll({
-        HttpHeaders.authorizationHeader: auth,
-        HttpHeaders.contentTypeHeader:
-            ContentType('application', 'json').toString(),
-        HttpHeaders.acceptHeader: 'application/vnd.vimeo.*+json;version=3.4',
-      });
-    final createBody = <String, dynamic>{
-      "upload": {"approach": "tus", "size": "$_fileSize"},
-      "folder_uri": "/users/$userId/projects/$folderId",
-      "name": "${_uuid.v4()}",
-      "hide_from_vimeo": true,
-    };
-    log("Info: ${jsonEncode(createBody)}");
+  //   final createHeaders = Map<String, String>.from(headers ?? {})
+  //     ..addAll({
+  //       HttpHeaders.authorizationHeader: auth,
+  //       HttpHeaders.contentTypeHeader:
+  //           ContentType('application', 'json').toString(),
+  //       HttpHeaders.acceptHeader: 'application/vnd.vimeo.*+json;version=3.4',
+  //     });
+  //   final createBody = <String, dynamic>{
+  //     "upload": {"approach": "tus", "size": "$_fileSize"},
+  //     "folder_uri": "/users/$userId/projects/$folderId",
+  //     "name": "${_uuid.v4()}",
+  //     "hide_from_vimeo": true,
+  //   };
+  //   log("Info: ${jsonEncode(createBody)}");
 
-    final response = await client.post(createURL,
-        headers: createHeaders, body: jsonEncode(createBody));
-    if (!(response.statusCode >= 200 && response.statusCode < 300) &&
-        response.statusCode != 404) {
-      throw ProtocolException(
-          "Unexpected status code (${response.statusCode}) while creating upload");
-    }
+  //   final response = await client.post(createURL,
+  //       headers: createHeaders, body: jsonEncode(createBody));
+  //   if (!(response.statusCode >= 200 && response.statusCode < 300) &&
+  //       response.statusCode != 404) {
+  //     throw ProtocolException(
+  //         "Unexpected status code (${response.statusCode}) while creating upload");
+  //   }
 
-    dynamic resBody = jsonDecode(response.body);
-    if (resBody['upload']['approach'] != 'tus') {
-      throw ProtocolException("Upload not configured with tus protocol");
-    }
+  //   dynamic resBody = jsonDecode(response.body);
+  //   if (resBody['upload']['approach'] != 'tus') {
+  //     throw ProtocolException("Upload not configured with tus protocol");
+  //   }
 
-    if (resBody['upload']['upload_link'] == "") {
-      throw ProtocolException(
-          "Missing upload url in response for creating upload");
-    }
+  //   if (resBody['upload']['upload_link'] == "") {
+  //     throw ProtocolException(
+  //         "Missing upload url in response for creating upload");
+  //   }
 
-    _uploadUrl = Uri.parse(resBody['upload']['upload_link'].toString());
-    store?.set(_fingerprint, _uploadUrl as Uri);
-  }
+  //   _uploadUrl = Uri.parse(resBody['upload']['upload_link'].toString());
+  //   store?.set(_fingerprint, _uploadUrl as Uri);
+  // }
 
   /// Check if possible to resume an already started upload
-  Future<bool> resume() async {
-    _fileSize = await file.length();
-    _pauseUpload = false;
+  // Future<bool> resume() async {
+  //   _fileSize = await file.length();
+  //   _pauseUpload = false;
 
-    if (!resumingEnabled) {
-      return false;
-    }
+  //   // if (!resumingEnabled) {
+  //   //   return false;
+  //   // }
 
-    _uploadUrl = await store?.get(_fingerprint);
+  //   // _uploadUrl = await store?.get(_fingerprint);
 
-    if (_uploadUrl == null) {
-      return false;
-    }
-    return true;
-  }
+  //   if (uploadUrl == null) {
+  //     return false;
+  //   }
+  //   return true;
+  // }
 
   /// Start or resume an upload in chunks of [maxChunkSize] throwing
   /// [ProtocolException] on server error
@@ -162,10 +160,13 @@ class TusClient {
     Function(double)? onProgress,
     Function()? onComplete,
   }) async {
-    if (!await resume()) {
-      //TODO!: if upload already started remove video from vimeo before retrying
-      await create();
-    }
+    // if (!await resume()) {
+    //   //TODO!: if upload already started remove video from vimeo before retrying
+    //   await create();
+    // }
+
+    _fileSize = await file.length();
+    _pauseUpload = false;
 
     // get offset from server
     _offset = await _getOffset();
@@ -187,7 +188,7 @@ class TusClient {
         //Makes request
         _chunkPatchFuture = client
             .patch(
-              _uploadUrl as Uri,
+              uploadUrl,
               headers: uploadHeaders,
               body: await _getData(),
             )
@@ -247,7 +248,7 @@ class TusClient {
 
   /// Actions to be performed after a successful upload
   void onComplete() {
-    store?.remove(_fingerprint);
+    // store?.remove(_fingerprint);
   }
 
   /// Override this method to customize creating file fingerprint
@@ -277,8 +278,7 @@ class TusClient {
       "Tus-Resumable": tusVersion,
       HttpHeaders.acceptHeader: 'application/vnd.vimeo.*+json;version=3.4',
     };
-    final response =
-        await client.head(_uploadUrl as Uri, headers: offsetHeaders);
+    final response = await client.head(uploadUrl, headers: offsetHeaders);
 
     if (!(response.statusCode >= 200 && response.statusCode < 300)) {
       throw ProtocolException(
@@ -319,17 +319,5 @@ class TusClient {
       offset = offset.substring(0, offset.indexOf(","));
     }
     return int.tryParse(offset);
-  }
-
-  Uri _parseCreateUrl(String urlStr) {
-    if (urlStr.contains("?")) {
-      urlStr = urlStr.substring(0, urlStr.indexOf("?"));
-    }
-    Uri createUri = Uri.parse(urlStr);
-
-    createUri = createUri.replace(queryParameters: <String, dynamic>{
-      'fields': 'upload.status,upload.upload_link,upload.approach'
-    });
-    return createUri;
   }
 }
