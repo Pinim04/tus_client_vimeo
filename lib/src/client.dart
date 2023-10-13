@@ -31,7 +31,7 @@ class TusClient {
   /// Storage used to save and retrieve upload URLs by its fingerprint.
   // final TusStore? store;
 
-  final XFile file;
+  final File file;
 
   final Map<String, String>? metadata;
 
