@@ -14,7 +14,6 @@ import 'package:cross_file/cross_file.dart' show XFile;
 import 'package:http/http.dart' as http;
 import "package:path/path.dart" as p;
 import 'package:internet_connection_checker/internet_connection_checker.dart';
-import 'package:uuid/uuid.dart';
 
 /// This class is used for creating or resuming uploads.
 class TusClient {
@@ -43,8 +42,6 @@ class TusClient {
 
   /// The maximum payload size in bytes when uploading the file in chunks (512KB)
   final int maxChunkSize;
-
-  late final Uuid _uuid;
 
   final Uri uploadUrl;
 
